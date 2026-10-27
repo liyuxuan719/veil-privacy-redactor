@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="VEIL 隐私与技术说明：了解本地 OCR、人脸检测、二维码识别、Canvas 导出、离线能力与匿名化边界。"
+    />
+    <meta name="theme-color" content="#f4efe7" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta property="og:title" content="VEIL 隐私与技术说明" />
+    <meta
+      property="og:description"
+      content="看清楚 VEIL 在浏览器里做什么、不做什么，以及分享图片前必须人工复核的原因。"
+    />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script src="assets/lucide.min.js" defer></script>
+    <script src="assets/guide.js" defer></script>
+    <title>隐私与技术说明 · VEIL</title>
+  </head>
+  <body class="guide-page">
+    <a class="skip-link" href="#guide-content">跳到正文</a>
+
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="./" aria-label="VEIL 首页">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i>
+            <b>V</b>
+          </span>
+          <span class="brand-copy">
+            <strong>VEIL</strong>
+            <small>PRIVATE REDACTION STUDIO</small>
+          </span>
+        </a>
+
+        <div class="header-actions">
+          <span class="privacy-pill">
+            <i data-lucide="wifi-off"></i>
+            零上传
+          </span>
+          <a class="icon-button" href="./" aria-label="返回打码器" title="返回打码器">
+            <i data-lucide="arrow-left"></i>
+          </a>
+        </div>
+      </header>
+
+      <main class="guide-main">
+        <section class="guide-hero" aria-labelledby="guide-title">
+          <div>
+            <p class="eyebrow">PRIVACY ARCHITECTURE / MODEL NOTES</p>
+            <h1 id="guide-title">看得见的本地处理，<br /><em>说得清的能力边界。</em></h1>
+          </div>
+          <p>
+            VEIL 的核心约束很简单：图片、识别结果与导出文件都不经过服务器。
+            这份说明解释它怎样做到、会处理什么，以及哪些事情它不能替你保证。
+          </p>
+        </section>
+
+        <div class="guide-layout" id="guide-content">
+          <aside class="guide-index" aria-label="本页目录">
+            <p class="section-kicker">ON THIS PAGE</p>
+            <nav>
+              <a href="#workflow"><span>01</span>使用流程</a>
+              <a href="#zero-upload"><span>02</span>零上传原理</a>
+              <a href="#detection"><span>03</span>识别方式</a>
+              <a href="#export"><span>04</span>安全导出</a>
+              <a href="#limits"><span>05</span>能力边界</a>
+              <a href="#self-host"><span>06</span>自行部署</a>
+            </nav>
+            <div class="index-note">
+              <i data-lucide="shield-check"></i>
+              <p>无账号、无图片队列、无分析埋点。</p>
+            </div>
+          </aside>
+
+          <article class="guide-article">
+            <section class="guide-section" id="workflow">
+              <div class="guide-section-heading">
+                <p class="section-kicker">01 / WORKFLOW</p>
+                <h2>两分钟完成一次安全分享</h2>
+              </div>
+              <div class="workflow-grid">
+                <div>
+                  <span>01</span>
+                  <i data-lucide="image-plus"></i>
+                  <h3>导入</h3>
+                  <p>拖放、粘贴或选择截图。超大图片会在本地缩放，以免占用过多内存。</p>
+                </div>
+                <div>
+                  <span>02</span>
+                  <i data-lucide="scan-search"></i>
+                  <h3>识别</h3>
+                  <p>按需运行二维码、人脸和中英文 OCR。每一项都可以单独关闭。</p>
+                </div>
+                <div>
+                  <span>03</span>
+                  <i data-lucide="scan-line"></i>
+                  <h3>补框</h3>
+                  <p>在画布上直接拖出额外遮挡区。沿图片边缘、反光和背景再检查一遍。</p>
+                </div>
+                <div>
+                  <span>04</span>
+                  <i data-lucide="download"></i>
+                  <h3>导出</h3>
+                  <p>选择马赛克、强模糊或纯色，再导出全新的 PNG 或 JPEG。</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="guide-section" id="zero-upload">
+              <div class="guide-section-heading">
+                <p class="section-kicker">02 / ZERO-UPLOAD</p>
+                <h2>图片没有上传路径</h2>
+              </div>
+              <p class="guide-lead">
+                “本地处理”不是一句界面文案，而是由资源路径、运行时和内容安全策略共同约束的架构。
+              </p>
+              <div class="data-path" aria-label="本地数据处理流程">
+                <div><i data-lucide="file-image"></i><strong>原始图片</strong><span>浏览器内存</span></div>
+                <b aria-hidden="true">→</b>
+                <div><i data-lucide="cpu"></i><strong>本地模型</strong><span>同源加载</span></div>
+                <b aria-hidden="true">→</b>
+                <div><i data-lucide="layers"></i><strong>遮挡画布</strong><span>重新绘制</span></div>
+                <b aria-hidden="true">→</b>
+                <div><i data-lucide="badge-check"></i><strong>安全图片</strong><span>直接下载</span></div>
+              </div>
+              <ul class="audit-list">
+                <li><strong>运行资源同源</strong><span>OCR、人脸模型和第三方脚本随站点静态资源提供。</span></li>
+                <li><strong>CSP 限制连接</strong><span>页面只允许连接自身源，外部上传端点会被浏览器拦截。</span></li>
+                <li><strong>没有后端接口</strong><span>项目是纯静态站点，不包含图片上传 API、数据库或用户账号。</span></li>
+                <li><strong>刷新即清空</strong><span>图片只存在于当前页面内存；本地存储仅保存显示偏好。</span></li>
+              </ul>
+            </section>
+
+            <section class="guide-section" id="detection">
+              <div class="guide-section-heading">
+                <p class="section-kicker">03 / DETECTION</p>
+                <h2>四种识别，一条本地流水线</h2>
+              </div>
+              <div class="model-table">
+                <div class="model-row model-head">
+                  <span>目标</span><span>本地引擎</span><span>建议</span>
+                </div>
+                <div class="model-row">
+                  <span><i data-lucide="scan-face"></i>人脸</span>
+                  <span>TensorFlow.js + BlazeFace</span>
+                  <strong>低分辨率或侧脸需手动补框</strong>
+                </div>
+                <div class="model-row">
+                  <span><i data-lucide="phone"></i>号码与证件</span>
+                  <span>Tesseract.js 中英文 OCR</span>
+                  <strong>旋转、手写与小字可能漏检</strong>
+                </div>
+                <div class="model-row">
+                  <span><i data-lucide="car-front"></i>车牌</span>
+                  <span>OCR + 规则匹配</span>
+                  <strong>异形车牌必须人工复核</strong>
+                </div>
+                <div class="model-row">
+                  <span><i data-lucide="qr-code"></i>二维码</span>
+                  <span>jsQR 像素扫描</span>
+                  <strong>严重反光或破损会降低成功率</strong>
+                </div>
+              </div>
+              <div class="guide-callout">
+                <i data-lucide="triangle-alert"></i>
+                <div>
+                  <strong>自动识别是起点，不是保险箱。</strong>
+                  <p>模型可能漏掉文字、背景中的号码、镜面反射或屏幕边缘信息。导出前必须人工检查。</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="guide-section" id="export">
+              <div class="guide-section-heading">
+                <p class="section-kicker">04 / SAFE EXPORT</p>
+                <h2>输出一张没有原始元数据的新图片</h2>
+              </div>
+              <p class="guide-lead">
+                VEIL 从原图像素重新绘制一块 Canvas，而不是直接修改原文件。因此导出的 PNG/JPEG
+                不携带原文件的 EXIF、GPS、相机型号与编辑历史。
+              </p>
+              <div class="export-options">
+                <div>
+                  <span class="swatch mosaic-swatch"></span>
+                  <h3>马赛克</h3>
+                  <p>先缩小再放大像素块，默认强度较高，适合常规分享。</p>
+                </div>
+                <div>
+                  <span class="swatch blur-swatch"></span>
+                  <h3>强模糊</h3>
+                  <p>边缘更自然，但低强度可能保留轮廓，建议配合高强度和扩边。</p>
+                </div>
+                <div>
+                  <span class="swatch solid-swatch"></span>
+                  <h3>纯色</h3>
+                  <p>最不易从遮挡区域推断内容，适合证件号、住址等高风险信息。</p>
+                </div>
+              </div>
+              <p class="guide-fineprint">
+                JPEG 是有损格式。每次转发、再次截图或平台压缩都可能改变像素；不要依赖低质量模糊保护高度敏感内容。
+              </p>
+            </section>
+
+            <section class="guide-section" id="limits">
+              <div class="guide-section-heading">
+                <p class="section-kicker">05 / BOUNDARIES</p>
+                <h2>VEIL 不能替你保证什么</h2>
+              </div>
+              <ul class="limit-list">
+                <li>
+                  <i data-lucide="circle-x"></i>
+                  <div><strong>不能保证不可逆匿名化</strong><p>背景、服装、伤疤、文字风格或其他线索都可能重新识别一个人。</p></div>
+                </li>
+                <li>
+                  <i data-lucide="circle-x"></i>
+                  <div><strong>不能保证百分之百检出</strong><p>识别模型都有误差。工具不会覆盖它没有识别出来的区域。</p></div>
+                </li>
+                <li>
+                  <i data-lucide="circle-x"></i>
+                  <div><strong>不是法律或医疗合规认证</strong><p>公开材料前，仍应按照所在地区的规则完成必要的人工审查。</p></div>
+                </li>
+                <li>
+                  <i data-lucide="circle-x"></i>
+                  <div><strong>不能控制第三方平台</strong><p>导出后如何被压缩、转载、缓存或索引，不在 VEIL 的控制范围内。</p></div>
+                </li>
+              </ul>
+            </section>
+
+            <section class="guide-section" id="self-host">
+              <div class="guide-section-heading">
+                <p class="section-kicker">06 / SELF-HOST</p>
+                <h2>静态托管即可运行</h2>
+              </div>
+              <p class="guide-lead">
+                仓库包含 GitHub Pages、Netlify、Vercel、Docker 与通用静态服务器配置。
+                不需要数据库、API 密钥或构建步骤。
+              </p>
+              <div class="command-list">
+                <div><span>本地</span><code>pnpm start</code></div>
+                <div><span>测试</span><code>pnpm test</code></div>
+                <div><span>语法检查</span><code>pnpm check</code></div>
+              </div>
+              <p>
+                生产环境请保持同源资源与 CSP 设置。替换或增加模型时，也应确保模型文件由当前站点提供，
+                不要把图片或推断数据发送到第三方推理 API。
+              </p>
+            </section>
+
+            <section class="guide-section guide-faq">
+              <div class="guide-section-heading">
+                <p class="section-kicker">FAQ</p>
+                <h2>常见问题</h2>
+              </div>
+              <details>
+                <summary>第一次识别为什么比较慢？</summary>
+                <p>浏览器需要加载 OCR 语言数据和人脸模型。资源会在本地生成缓存，之后启动会更快。</p>
+              </details>
+              <details>
+                <summary>离线时还能使用吗？</summary>
+                <p>完成首次加载并安装 PWA 后，应用与模型可由 Service Worker 提供离线访问。</p>
+              </details>
+              <details>
+                <summary>导出的图片真的没有 EXIF 吗？</summary>
+                <p>VEIL 使用新 Canvas 编码，因此不会复制原文件的 EXIF/GPS 区块。平台后续处理不在控制范围内。</p>
+              </details>
+              <details>
+                <summary>识别结果会保存吗？</summary>
+                <p>不会。刷新页面后图片和遮挡区域都会丢失；只有遮挡样式、格式等显示偏好保存在 localStorage。</p>
+              </details>
+            </section>
+          </article>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <p>VEIL v1.0 · 隐私与技术说明</p>
+        <p>本地识别不能替代人工检查。</p>
+        <span id="year"></span>
+      </footer>
+    </div>
+  </body>
+</html>

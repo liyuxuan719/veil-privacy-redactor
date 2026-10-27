@@ -1,0 +1,17 @@
+node_modules/
+.edge-icon-profile/
+.DS_Store
+Thumbs.db
+*.log
+.env
+.env.*
+!.env.example
+.vercel/
+.netlify/
+coverage/
+
+# Unused artifacts from early OCR packaging experiments.
+assets/vendor/tesseract/*.traineddata.gz
+assets/vendor/tesseract/tesseract-core-simd.wasm.js
+assets/vendor/tesseract/tesseract-core-relaxedsimd.wasm.js
+assets/vendor/tesseract/tesseract-core-relaxedsimd-lstm.wasm.js

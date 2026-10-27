@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="VEIL 是一款零上传的浏览器隐私打码器，本地识别人脸、电话号码、证件、车牌和二维码，并导出无元数据的图片。"
+    />
+    <meta name="theme-color" content="#f4efe7" />
+    <meta name="color-scheme" content="light" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'"
+    />
+    <meta property="og:title" content="VEIL · 零上传隐私打码器" />
+    <meta
+      property="og:description"
+      content="在浏览器本地识别并遮挡截图中的敏感信息。图片不上传，导出自动去除元数据。"
+    />
+    <meta property="og:type" content="website" />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="assets/styles.css" />
+    <script src="assets/lucide.min.js" defer></script>
+    <script src="assets/vendor/tf.min.js" defer></script>
+    <script src="assets/vendor/blazeface.min.umd.js" defer></script>
+    <script src="assets/vendor/jsqr.js" defer></script>
+    <script src="assets/vendor/tesseract.min.js" defer></script>
+    <script type="module" src="assets/app.js"></script>
+    <title>VEIL · 零上传隐私打码器</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#redaction-studio">跳到隐私打码台</a>
+
+    <div class="site-shell">
+      <header class="site-header">
+        <a class="brand" href="./" aria-label="VEIL 首页">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i>
+            <b>V</b>
+          </span>
+          <span class="brand-copy">
+            <strong>VEIL</strong>
+            <small>PRIVATE REDACTION STUDIO</small>
+          </span>
+        </a>
+
+        <div class="header-actions">
+          <span class="privacy-pill">
+            <i data-lucide="wifi-off"></i>
+            零上传
+          </span>
+          <button class="icon-button" id="install-button" type="button" aria-label="安装 VEIL" title="安装 VEIL" hidden>
+            <i data-lucide="download"></i>
+          </button>
+          <a class="icon-button" href="guide.html" aria-label="查看隐私与技术说明" title="查看隐私与技术说明">
+            <i data-lucide="book-open"></i>
+          </a>
+        </div>
+      </header>
+
+      <main>
+        <section class="intro" aria-labelledby="page-title">
+          <div>
+            <p class="eyebrow">LOCAL OCR / FACE / QR / REDACTION</p>
+            <h1 id="page-title">把敏感信息，<br /><em>留在自己手里。</em></h1>
+          </div>
+          <div class="intro-copy">
+            <p>拖入一张截图，在本地识别敏感内容、补框并安全导出。</p>
+            <span>图片不经过服务器。Canvas 重新编码会同时去除 EXIF、定位与设备元数据。</span>
+          </div>
+        </section>
+
+        <section class="redaction-studio" id="redaction-studio" aria-labelledby="studio-title">
+          <aside class="control-rail">
+            <div class="rail-heading">
+              <p class="section-kicker">DETECTION</p>
+              <h2 id="studio-title">识别与遮挡</h2>
+            </div>
+
+            <input id="image-input" type="file" accept="image/png,image/jpeg,image/webp,image/avif,image/gif,image/bmp" hidden />
+
+            <button class="upload-button" id="upload-button" type="button">
+              <span><i data-lucide="image-plus"></i></span>
+              <div>
+                <strong>选择图片</strong>
+                <small>也可以拖放或粘贴截图</small>
+              </div>
+            </button>
+
+            <div class="toggle-list">
+              <label>
+                <span><i data-lucide="scan-face"></i>人脸</span>
+                <input id="detect-faces" type="checkbox" checked />
+                <span class="toggle" aria-hidden="true"></span>
+              </label>
+              <label>
+                <span><i data-lucide="phone"></i>电话号码</span>
+                <input id="detect-phones" type="checkbox" checked />
+                <span class="toggle" aria-hidden="true"></span>
+              </label>
+              <label>
+                <span><i data-lucide="badge-info"></i>证件号码</span>
+                <input id="detect-ids" type="checkbox" checked />
+                <span class="toggle" aria-hidden="true"></span>
+              </label>
+              <label>
+                <span><i data-lucide="car-front"></i>车牌</span>
+                <input id="detect-plates" type="checkbox" checked />
+                <span class="toggle" aria-hidden="true"></span>
+              </label>
+              <label>
+                <span><i data-lucide="qr-code"></i>二维码</span>
+                <input id="detect-qr" type="checkbox" checked />
+                <span class="toggle" aria-hidden="true"></span>
+              </label>
+            </div>
+
+            <div class="control-group">
+              <div class="control-heading">
+                <span>遮挡方式</span>
+                <small id="style-hint">不可逆的像素化</small>
+              </div>
+              <div class="segmented-control" id="redaction-style">
+                <button type="button" data-style="mosaic" class="is-active">马赛克</button>
+                <button type="button" data-style="blur">强模糊</button>
+                <button type="button" data-style="solid">纯色</button>
+              </div>
+            </div>
+
+            <label class="range-row" for="strength-range">
+              <span>遮挡强度</span>
+              <input id="strength-range" type="range" min="1" max="10" step="1" value="6" />
+              <output id="strength-value">6</output>
+            </label>
+            <label class="range-row" for="padding-range">
+              <span>检测扩边</span>
+              <input id="padding-range" type="range" min="0" max="32" step="1" value="6" />
+              <output id="padding-value">6 px</output>
+            </label>
+
+            <button class="scan-button" id="scan-button" type="button" disabled>
+              <i data-lucide="scan-search"></i>
+              <span>自动识别</span>
+            </button>
+            <p class="scan-note">首次 OCR 与人脸模型会从本地资源加载，之后由浏览器缓存。</p>
+          </aside>
+
+          <div class="editor-panel">
+            <div class="editor-toolbar">
+              <div class="toolbar-group">
+                <button class="icon-button" id="undo-button" type="button" aria-label="撤销" title="撤销" disabled>
+                  <i data-lucide="undo-2"></i>
+                </button>
+                <button class="icon-button" id="redo-button" type="button" aria-label="重做" title="重做" disabled>
+                  <i data-lucide="redo-2"></i>
+                </button>
+                <span class="toolbar-separator"></span>
+                <button class="text-button" id="reveal-button" type="button" disabled>
+                  <i data-lucide="eye"></i>
+                  <span>按住看原图</span>
+                </button>
+                <button class="text-button" id="reset-regions-button" type="button" disabled>
+                  <i data-lucide="eraser"></i>
+                  <span>清除遮挡</span>
+                </button>
+              </div>
+              <div class="image-counter" id="image-counter">NO IMAGE</div>
+            </div>
+
+            <div class="canvas-stage" id="canvas-stage">
+              <div class="empty-state" id="empty-state">
+                <div class="empty-visual" aria-hidden="true">
+                  <span class="fake-photo">
+                    <i></i><i></i><i></i>
+                    <b></b>
+                  </span>
+                  <span class="scan-line"></span>
+                </div>
+                <h2>拖入截图开始</h2>
+                <p>支持 PNG、JPEG、WebP、AVIF、GIF 与 BMP，最大边长会自动适配编辑区。</p>
+                <div>
+                  <button class="primary-button" id="empty-upload-button" type="button">
+                    <i data-lucide="folder-open"></i>
+                    打开图片
+                  </button>
+                  <button class="secondary-button" id="demo-button" type="button">
+                    <i data-lucide="sparkles"></i>
+                    使用示例
+                  </button>
+                </div>
+              </div>
+
+              <div class="canvas-scroll" id="canvas-scroll" hidden>
+                <canvas id="editor-canvas" aria-label="图片与隐私遮挡编辑区"></canvas>
+                <div class="manual-selection" id="manual-selection" hidden></div>
+              </div>
+
+              <div class="scan-overlay" id="scan-overlay" role="status" aria-live="polite" hidden>
+                <div class="scan-spinner"><i data-lucide="scan-line"></i></div>
+                <strong id="scan-status">正在准备本地识别</strong>
+                <div class="scan-progress"><span id="scan-progress-fill"></span></div>
+                <span id="scan-progress-label">0%</span>
+              </div>
+
+              <div class="drag-overlay" id="drag-overlay" hidden>
+                <i data-lucide="image-down"></i>
+                <strong>松开导入图片</strong>
+              </div>
+            </div>
+
+            <div class="editor-footer">
+              <p id="editor-hint">图片只在当前标签页内处理，刷新即清除。</p>
+              <span id="image-dimensions">—</span>
+            </div>
+          </div>
+
+          <aside class="result-rail">
+            <div class="result-heading">
+              <div>
+                <p class="section-kicker">REGIONS</p>
+                <h2>遮挡清单</h2>
+              </div>
+              <output id="region-count">0</output>
+            </div>
+
+            <div class="detection-summary">
+              <div><span>人脸</span><strong id="face-count">0</strong></div>
+              <div><span>号码</span><strong id="text-count">0</strong></div>
+              <div><span>二维码</span><strong id="qr-count">0</strong></div>
+            </div>
+
+            <div class="region-list" id="region-list">
+              <div class="region-empty" id="region-empty">
+                <i data-lucide="scan-face"></i>
+                <p>识别结果和手动框选会显示在这里。</p>
+              </div>
+            </div>
+
+            <div class="export-panel">
+              <div class="export-format">
+                <span>导出格式</span>
+                <div class="segmented-control compact" id="format-control">
+                  <button type="button" data-format="image/png" class="is-active">PNG</button>
+                  <button type="button" data-format="image/jpeg">JPEG</button>
+                </div>
+              </div>
+              <label class="range-row export-quality" for="quality-range">
+                <span>JPEG 质量</span>
+                <input id="quality-range" type="range" min="60" max="100" step="1" value="92" />
+                <output id="quality-value">92</output>
+              </label>
+              <button class="export-button" id="export-button" type="button" disabled>
+                <i data-lucide="download"></i>
+                <span>导出安全图片</span>
+              </button>
+              <button class="copy-image-button" id="copy-image-button" type="button" disabled>
+                <i data-lucide="clipboard"></i>
+                <span>复制到剪贴板</span>
+              </button>
+              <p>
+                <i data-lucide="shield-check"></i>
+                重新编码会移除原始 EXIF、定位与设备信息。
+              </p>
+            </div>
+          </aside>
+        </section>
+
+        <section class="privacy-strip">
+          <div>
+            <p class="section-kicker">ZERO-UPLOAD PIPELINE</p>
+            <h2>从像素到导出，不离开浏览器。</h2>
+          </div>
+          <article>
+            <span>01</span>
+            <h3>本地识别</h3>
+            <p>OCR、人脸与二维码检测均在当前页面内完成，没有图片上传接口。</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>手动兜底</h3>
+            <p>自动检测不是保险箱。你可以继续拖动补框，直到确认遮挡完整。</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>干净导出</h3>
+            <p>Canvas 生成新图片，不携带原文件中的 EXIF、GPS 与设备元数据。</p>
+          </article>
+        </section>
+
+        <section class="limitation-panel">
+          <div>
+            <p class="section-kicker">BEFORE YOU SHARE</p>
+            <h2>导出之前，再检查一次。</h2>
+          </div>
+          <ul>
+            <li>强模糊与马赛克会重新绘制像素，导出后不可还原为原图。</li>
+            <li>纯色遮挡通常最稳妥；低强度模糊仍可能保留可辨认轮廓。</li>
+            <li>OCR 无法识别所有文字，正式分享前必须人工复核背景、反光和边缘信息。</li>
+            <li>本工具不提供法律匿名化认证，也不保证图片无法被重新识别。</li>
+          </ul>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <p>VEIL v1.0 · 零上传隐私打码器</p>
+        <p>图片不上传，识别结果不离开当前标签页。</p>
+        <span id="year"></span>
+      </footer>
+    </div>
+
+    <input id="paste-image-input" type="text" aria-hidden="true" tabindex="-1" class="clipboard-catcher" />
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <noscript>
+      <div class="noscript">VEIL 需要 JavaScript 才能在本地处理图片。</div>
+    </noscript>
+  </body>
+</html>

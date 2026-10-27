@@ -31,14 +31,16 @@ jobs:
         run: |
           set -euo pipefail
           test -f veil-source.zip
+          cp .github/workflows/bootstrap-veil.yml "$RUNNER_TEMP/bootstrap-veil.yml"
           archive_dir="$RUNNER_TEMP/veil-source"
           rm -rf "$archive_dir"
           mkdir -p "$archive_dir"
           unzip -q veil-source.zip -d "$archive_dir"
           find . -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
           cp -a "$archive_dir/." .
+          rm -f .github/workflows/pages.yml
+          cp "$RUNNER_TEMP/bootstrap-veil.yml" .github/workflows/bootstrap-veil.yml
           rm -f veil-source.zip
-          rm -f .github/workflows/bootstrap-veil.yml
 
       - name: Validate imported source
         shell: bash
@@ -46,7 +48,6 @@ jobs:
           set -euo pipefail
           test -f index.html
           test -f assets/app.js
-          test -f .github/workflows/pages.yml
           node --check assets/app.js
           node --check assets/guide.js
           node --check src/redaction.js

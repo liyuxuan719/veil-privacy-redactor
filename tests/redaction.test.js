@@ -11,6 +11,7 @@ import {
   qrLocationToRectangle,
   rectangleIoU,
   rectUnion,
+  scanQrRectangles,
 } from "../src/redaction.js";
 
 const bbox = { x: 10, y: 20, width: 200, height: 30 };
@@ -102,4 +103,50 @@ test("QR corner points convert into a bounding rectangle", () => {
     bottomLeftCorner: { x: 10, y: 80 },
   });
   assert.deepEqual(rect, { x: 10, y: 20, width: 60, height: 60 });
+});
+
+test("email detection covers common addresses and can be disabled", () => {
+  for (const address of ["alice@example.com", "first.last+tag@sub.example.co.uk"]) {
+    const matches = findMatches({ text: `邮箱 ${address}。`, bbox });
+    assert.ok(matches.some((match) => match.type === "email" && match.value === address));
+  }
+  assert.equal(findMatches({ text: "alice@example.com" }, {
+    ...DEFAULT_DETECTION_OPTIONS, emails: false,
+  }).some((match) => match.type === "email"), false);
+  const regions = detectSensitiveLines([{ text: "alice@example.com", bbox }]);
+  assert.equal(regions[0].type, "email");
+  assert.deepEqual(regions[0].rect, bbox);
+});
+
+const qrLocation = (x, y, size = 3) => ({
+  topLeftCorner: { x, y }, topRightCorner: { x: x + size, y },
+  bottomRightCorner: { x: x + size, y: y + size },
+  bottomLeftCorner: { x, y: y + size },
+});
+
+test("multiple QR codes are found without mutating the original image", () => {
+  const image = { width: 20, height: 10, data: new Uint8ClampedArray(800) };
+  let calls = 0;
+  const rectangles = scanQrRectangles(image, (pixels) => {
+    calls += 1;
+    if (pixels[0] === 0) return { location: qrLocation(0, 0) };
+    if (pixels[(2 * 20 + 12) * 4] === 0) return { location: qrLocation(12, 2) };
+    return null;
+  });
+  assert.equal(rectangles.length, 2);
+  assert.equal(calls, 3);
+  assert.ok(image.data.every((pixel) => pixel === 0));
+});
+
+test("QR scanning stops on repeat or malformed detections and respects limits", () => {
+  const image = { width: 20, height: 20, data: new Uint8ClampedArray(1600) };
+  let calls = 0;
+  assert.equal(scanQrRectangles(image, () => {
+    calls += 1;
+    return { location: qrLocation(2, 2) };
+  }).length, 1);
+  assert.equal(calls, 2);
+  assert.deepEqual(scanQrRectangles(image, () => ({ location: qrLocation(NaN, 0) })), []);
+  assert.equal(scanQrRectangles(image, () => ({ location: qrLocation(0, 0) }), 1).length, 1);
+  assert.throws(() => scanQrRectangles({ width: 1, height: 2, data: [] }, () => null), TypeError);
 });

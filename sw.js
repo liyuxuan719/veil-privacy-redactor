@@ -1,4 +1,5 @@
-const CACHE_NAME = "veil-privacy-redactor-v1.2.1";
+const CACHE_PREFIX = "veil-privacy-redactor-";
+const CACHE_NAME = `${CACHE_PREFIX}v2.0.0`;
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -45,7 +46,7 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+        Promise.all(keys.filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME).map((key) => caches.delete(key))),
       )
       .then(() => self.clients.claim()),
   );
@@ -55,16 +56,21 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  if (!url.href.startsWith(self.registration.scope)) return;
 
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      (async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const pageUrl = new URL(url.pathname, self.location.origin).href;
+        try {
+          const response = await fetch(event.request);
+          if (response.ok) await cache.put(pageUrl, response.clone()).catch(() => {});
           return response;
-        })
-        .catch(async () => (await caches.match(event.request)) || caches.match("./index.html")),
+        } catch {
+          return (await cache.match(pageUrl)) || (await cache.match("./index.html")) || Response.error();
+        }
+      })(),
     );
     return;
   }
@@ -74,30 +80,28 @@ self.addEventListener("fetch", (event) => {
   );
   if (isCacheFirst) {
     event.respondWith(
-      caches.match(event.request).then(
-        (cached) =>
-          cached ||
-          fetch(event.request).then((response) => {
-            if (response.ok) {
-              const copy = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-            }
-            return response;
-          }),
-      ),
+      (async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        try {
+          const response = await fetch(event.request);
+          if (response.ok) await cache.put(event.request, response.clone()).catch(() => {});
+          return response;
+        } catch { return Response.error(); }
+      })(),
     );
     return;
   }
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        }
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      try {
+        const response = await fetch(event.request);
+        if (response.ok) await cache.put(event.request, response.clone()).catch(() => {});
         return response;
-      })
-      .catch(() => caches.match(event.request)),
+      } catch { return (await cache.match(event.request)) || Response.error(); }
+    })(),
   );
 });

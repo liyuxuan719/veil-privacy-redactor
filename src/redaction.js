@@ -1,12 +1,20 @@
 export const DEFAULT_DETECTION_OPTIONS = {
   faces: true,
   phones: true,
+  emails: true,
   ids: true,
   plates: true,
   qr: true,
 };
 
 const PATTERNS = {
+  emails: [
+    {
+      type: "email",
+      label: "电子邮箱",
+      regex: /[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]*[A-Z0-9])?)+/gi,
+    },
+  ],
   ids: [
     {
       type: "id",
@@ -142,7 +150,7 @@ export function findMatches(line, options = DEFAULT_DETECTION_OPTIONS) {
   const sourceText = String(line.text || "");
   const matches = [];
 
-  for (const category of ["ids", "phones", "plates"]) {
+  for (const category of ["ids", "phones", "emails", "plates"]) {
     if (!options[category]) continue;
     for (const pattern of PATTERNS[category]) {
       pattern.regex.lastIndex = 0;
@@ -168,7 +176,7 @@ export function detectSensitiveLines(lines, options = DEFAULT_DETECTION_OPTIONS)
   for (const line of lines || []) {
     if (!line?.bbox) continue;
     const matches = findMatches(line, options);
-    const primary = ["id", "phone", "plate"]
+    const primary = ["id", "phone", "email", "plate"]
       .map((type) => matches.find((match) => match.type === type))
       .find(Boolean);
     if (!primary) continue;
@@ -232,4 +240,35 @@ export function qrLocationToRectangle(location) {
   const right = Math.max(...points.map((point) => point.x));
   const bottom = Math.max(...points.map((point) => point.y));
   return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+// jsQR returns one code per pass. Mask a private copy between passes so the
+// next code can be discovered without changing the editor's source pixels.
+export function scanQrRectangles(imageData, decoder, limit = 20) {
+  const { width, height, data } = imageData;
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) ||
+      width < 1 || height < 1 || data?.length !== width * height * 4) {
+    throw new TypeError("Invalid QR image data.");
+  }
+  if (typeof decoder !== "function") throw new TypeError("QR decoder unavailable.");
+  const pixels = new Uint8ClampedArray(data);
+  const rectangles = [];
+  const maxPasses = Number.isFinite(limit) ? Math.min(20, Math.max(0, Math.floor(limit))) : 20;
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    const result = decoder(pixels, width, height, { inversionAttempts: "attemptBoth" });
+    if (!result?.location) break;
+    const raw = qrLocationToRectangle(result.location);
+    if (!raw || !Object.values(raw).every(Number.isFinite)) break;
+    const rect = clampRectangle(raw, width, height);
+    if (rect.width < 1 || rect.height < 1 ||
+        rectangles.some((previous) => rectangleIoU(previous, rect) > 0.78)) break;
+    rectangles.push(rect);
+    const mask = padRectangle(rect, 2, width, height);
+    const left = Math.floor(mask.x);
+    const right = Math.ceil(mask.x + mask.width);
+    for (let y = Math.floor(mask.y); y < Math.ceil(mask.y + mask.height); y += 1) {
+      pixels.fill(255, (y * width + left) * 4, (y * width + right) * 4);
+    }
+  }
+  return rectangles;
 }

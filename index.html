@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="VEIL 是一款零上传的浏览器隐私打码器，本地识别人脸、电话号码、证件、车牌和二维码，并导出无元数据的图片。"
+      content="VEIL 是一款零上传的浏览器隐私打码器，本地识别人脸、电话号码、邮箱、证件、车牌和多个二维码，并导出无元数据的图片。"
     />
     <meta name="theme-color" content="#f4efe7" />
     <meta name="color-scheme" content="light" />
@@ -99,6 +99,11 @@
               <label>
                 <span><i data-lucide="phone"></i>电话号码</span>
                 <input id="detect-phones" type="checkbox" checked />
+                <span class="toggle" aria-hidden="true"></span>
+              </label>
+              <label>
+                <span><i data-lucide="mail"></i>电子邮箱</span>
+                <input id="detect-emails" type="checkbox" checked />
                 <span class="toggle" aria-hidden="true"></span>
               </label>
               <label>
@@ -228,7 +233,7 @@
 
             <div class="detection-summary">
               <div><span>人脸</span><strong id="face-count">0</strong></div>
-              <div><span>号码</span><strong id="text-count">0</strong></div>
+              <div><span>敏感文字</span><strong id="text-count">0</strong></div>
               <div><span>二维码</span><strong id="qr-count">0</strong></div>
             </div>
 
@@ -305,7 +310,7 @@
       </main>
 
       <footer class="site-footer">
-        <p>VEIL v1.0 · 零上传隐私打码器</p>
+        <p>VEIL v2.0 · 零上传隐私打码器</p>
         <p>图片不上传，识别结果不离开当前标签页。</p>
         <span id="year"></span>
       </footer>

@@ -1,6 +1,6 @@
 {
   "name": "veil-privacy-redactor",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A zero-upload browser redaction studio for faces, phone numbers, IDs, license plates, and QR codes.",
   "type": "module",
   "private": false,

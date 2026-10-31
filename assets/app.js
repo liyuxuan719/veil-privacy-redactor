@@ -6,7 +6,7 @@ import {
   detectSensitiveLines,
   flattenTesseractLines,
   padRectangle,
-  qrLocationToRectangle,
+  scanQrRectangles,
 } from "../src/redaction.js";
 
 const SETTINGS_KEY = "veil-redactor-settings-v1";
@@ -23,6 +23,7 @@ const STYLE_HINTS = {
 const REGION_ICONS = {
   face: "scan-face",
   phone: "phone",
+  email: "mail",
   id: "badge-info",
   plate: "car-front",
   qr: "qr-code",
@@ -54,6 +55,9 @@ const state = {
   },
   scanning: false,
   scanToken: 0,
+  loadToken: 0,
+  ocrScanToken: null,
+  ocrQueue: Promise.resolve(),
   revealOriginal: false,
   manualStart: null,
   manualPreview: null,
@@ -73,6 +77,7 @@ const elements = {
   scanButton: document.querySelector("#scan-button"),
   detectFaces: document.querySelector("#detect-faces"),
   detectPhones: document.querySelector("#detect-phones"),
+  detectEmails: document.querySelector("#detect-emails"),
   detectIds: document.querySelector("#detect-ids"),
   detectPlates: document.querySelector("#detect-plates"),
   detectQr: document.querySelector("#detect-qr"),
@@ -169,6 +174,7 @@ function createIcons() {
 function renderControls() {
   elements.detectFaces.checked = state.detection.faces;
   elements.detectPhones.checked = state.detection.phones;
+  elements.detectEmails.checked = state.detection.emails;
   elements.detectIds.checked = state.detection.ids;
   elements.detectPlates.checked = state.detection.plates;
   elements.detectQr.checked = state.detection.qr;
@@ -198,9 +204,9 @@ function renderControls() {
   elements.revealButton.disabled = !hasImage;
   elements.exportButton.disabled = !hasImage || !state.regions.some((region) => region.enabled);
   elements.copyImageButton.disabled = elements.exportButton.disabled;
-  elements.undoButton.disabled = state.history.length === 0;
-  elements.redoButton.disabled = state.future.length === 0;
-  elements.resetRegionsButton.disabled = !hasImage || state.regions.length === 0;
+  elements.undoButton.disabled = state.scanning || state.history.length === 0;
+  elements.redoButton.disabled = state.scanning || state.future.length === 0;
+  elements.resetRegionsButton.disabled = state.scanning || !hasImage || state.regions.length === 0;
 }
 
 function getAllRegions() {
@@ -418,7 +424,7 @@ function maskValue(value = "") {
 function renderRegionList() {
   const counts = {
     face: state.regions.filter((region) => region.type === "face").length,
-    text: state.regions.filter((region) => ["phone", "id", "plate"].includes(region.type)).length,
+    text: state.regions.filter((region) => ["phone", "email", "id", "plate"].includes(region.type)).length,
     qr: state.regions.filter((region) => region.type === "qr").length,
   };
   elements.regionCount.textContent = String(state.regions.length);
@@ -537,6 +543,7 @@ function canvasFromSource(source, name, originalDimensions = null) {
   state.selectedRegionId = null;
   state.manualStart = null;
   state.manualPreview = null;
+  state.revealOriginal = false;
   state.scanToken += 1;
   state.scanning = false;
   elements.scanOverlay.hidden = true;
@@ -557,9 +564,14 @@ async function loadImageFile(file) {
     return;
   }
 
+  const token = ++state.loadToken;
   try {
     elements.editorHint.textContent = "正在本地解码图片…";
     const source = await decodeImage(file);
+    if (token !== state.loadToken) {
+      source.close?.();
+      return;
+    }
     canvasFromSource(
       source,
       file.name,
@@ -567,16 +579,19 @@ async function loadImageFile(file) {
     );
     showToast("图片已载入，点击自动识别或直接拖动补框");
   } catch {
+    if (token !== state.loadToken) return;
     elements.editorHint.textContent = "图片解码失败，请尝试其他格式。";
     showToast("无法读取这张图片");
   }
 }
 
 async function loadDemo() {
+  const token = ++state.loadToken;
   try {
     const qr = new Image();
     qr.src = "assets/demo-qr.png";
     await qr.decode();
+    if (token !== state.loadToken) return;
 
     const canvas = document.createElement("canvas");
     canvas.width = 1440;
@@ -634,6 +649,7 @@ async function loadDemo() {
     });
     showToast("示例图片已载入，可测试 OCR 与二维码识别");
   } catch {
+    if (token !== state.loadToken) return;
     showToast("示例图片加载失败");
   }
 }
@@ -658,19 +674,13 @@ function createScaledCanvas(sourceCanvas, maxEdge) {
   return { canvas, ratio };
 }
 
-async function detectQrCode() {
+async function detectQrCode(sourceCanvas) {
   const decoder = window.jsQR?.default || window.jsQR;
-  if (typeof decoder !== "function") return [];
-  const { canvas, ratio } = createScaledCanvas(state.imageCanvas, MAX_SCAN_EDGE);
+  if (typeof decoder !== "function") throw new Error("QR decoder unavailable.");
+  const { canvas, ratio } = createScaledCanvas(sourceCanvas, MAX_SCAN_EDGE);
   const context = canvas.getContext("2d", { willReadFrequently: true });
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  const result = decoder(imageData.data, canvas.width, canvas.height, {
-    inversionAttempts: "attemptBoth",
-  });
-  if (!result?.location) return [];
-  const rect = qrLocationToRectangle(result.location);
-  if (!rect) return [];
-  return [
+  return scanQrRectangles(imageData, decoder).map((rect) =>
     createRegion(
       "qr",
       "二维码",
@@ -682,7 +692,7 @@ async function detectQrCode() {
       },
       "qr",
     ),
-  ];
+  );
 }
 
 async function getFaceModel() {
@@ -709,10 +719,10 @@ async function getFaceModel() {
   return state.faceModelPromise;
 }
 
-async function detectFaces() {
+async function detectFaces(sourceCanvas) {
   try {
     const model = await getFaceModel();
-    const predictions = await model.estimateFaces(state.imageCanvas, false, false, false);
+    const predictions = await model.estimateFaces(sourceCanvas, false, false, false);
     return predictions
       .map((prediction) => {
         const left = Number(prediction.topLeft?.[0]);
@@ -725,8 +735,8 @@ async function detectFaces() {
           "人脸",
           clampRectangle(
             { x: left, y: top, width: right - left, height: bottom - top },
-            state.imageCanvas.width,
-            state.imageCanvas.height,
+            sourceCanvas.width,
+            sourceCanvas.height,
           ),
           "face",
           { confidence: Number(prediction.probability) || 0.9 },
@@ -739,12 +749,12 @@ async function detectFaces() {
       fastMode: false,
       maxDetectedFaces: 20,
     });
-    const faces = await nativeDetector.detect(state.imageCanvas);
+    const faces = await nativeDetector.detect(sourceCanvas);
     return faces.map((face) =>
       createRegion(
         "face",
         "人脸",
-        clampRectangle(face.boundingBox, state.imageCanvas.width, state.imageCanvas.height),
+        clampRectangle(face.boundingBox, sourceCanvas.width, sourceCanvas.height),
         "face",
         { confidence: 0.9 },
       ),
@@ -753,7 +763,7 @@ async function detectFaces() {
 }
 
 function setOcrProgress(message) {
-  if (!state.scanning) return;
+  if (!state.scanning || state.ocrScanToken !== state.scanToken) return;
   const progress = Number(message?.progress) || 0;
   const mapped = 0.48 + clampNumber(progress, 0, 1) * 0.46;
   const statusMap = {
@@ -771,6 +781,18 @@ async function getOcrWorker() {
   if (!state.ocrWorkerPromise) {
     const assetBase = new URL("assets/vendor/tesseract/", location.href);
     let rejectWorker;
+    let initializingWorker = null;
+    let settled = false;
+    let discarded = false;
+    const discardWorker = () => {
+      if (!initializingWorker || discarded) return;
+      discarded = true;
+      try {
+        Promise.resolve(initializingWorker.terminate()).catch(() => {});
+      } catch {
+        // Cleanup cannot hide the original initialization error.
+      }
+    };
     const initializationTimeout = window.setTimeout(() => {
       rejectWorker?.(new Error("OCR initialization timed out."));
     }, 90_000);
@@ -784,21 +806,36 @@ async function getOcrWorker() {
         gzip: false,
         logger: setOcrProgress,
         errorHandler: (message) => reject(new Error(String(message))),
-      }).then(resolve, reject);
+      }).then(async (worker) => {
+        initializingWorker = worker;
+        if (settled) {
+          discardWorker();
+          return;
+        }
+        try {
+          await worker.setParameters({
+            tessedit_pageseg_mode: "3",
+            preserve_interword_spaces: "1",
+          });
+          if (settled) discardWorker();
+          else resolve(worker);
+        } catch (error) {
+          reject(error);
+        }
+      }, reject);
     });
 
     state.ocrWorkerPromise = workerReady
-      .then(async (worker) => {
+      .then((worker) => {
+        settled = true;
         window.clearTimeout(initializationTimeout);
-        await worker.setParameters({
-          tessedit_pageseg_mode: "3",
-          preserve_interword_spaces: "1",
-        });
         state.ocrWorker = worker;
         return worker;
       })
       .catch((error) => {
+        settled = true;
         window.clearTimeout(initializationTimeout);
+        discardWorker();
         state.ocrWorkerPromise = null;
         state.ocrWorker = null;
         throw error;
@@ -807,27 +844,42 @@ async function getOcrWorker() {
   return state.ocrWorkerPromise;
 }
 
-async function detectOcrText() {
-  const worker = await getOcrWorker();
-  const { canvas, ratio } = createScaledCanvas(state.imageCanvas, MAX_SCAN_EDGE);
-  const result = await worker.recognize(canvas, {}, { blocks: true, text: true });
-  const lines = flattenTesseractLines(result.data).map((line) => ({
-    ...line,
-    bbox: line.bbox
-      ? {
-          x: line.bbox.x / ratio,
-          y: line.bbox.y / ratio,
-          width: line.bbox.width / ratio,
-          height: line.bbox.height / ratio,
-        }
-      : null,
-  }));
-  return detectSensitiveLines(lines, state.detection);
+async function detectOcrText(sourceCanvas, detection, token) {
+  // A single Tesseract worker runs one recognition at a time. New images wait
+  // for an in-flight job and discard obsolete jobs before starting another.
+  const task = state.ocrQueue.catch(() => {}).then(async () => {
+    if (token !== state.scanToken) return [];
+    state.ocrScanToken = token;
+    try {
+      const worker = await getOcrWorker();
+      if (token !== state.scanToken) return [];
+      const { canvas, ratio } = createScaledCanvas(sourceCanvas, MAX_SCAN_EDGE);
+      const result = await worker.recognize(canvas, {}, { blocks: true, text: true });
+      const lines = flattenTesseractLines(result.data).map((line) => ({
+        ...line,
+        bbox: line.bbox
+          ? {
+              x: line.bbox.x / ratio,
+              y: line.bbox.y / ratio,
+              width: line.bbox.width / ratio,
+              height: line.bbox.height / ratio,
+            }
+          : null,
+      }));
+      return detectSensitiveLines(lines, detection);
+    } finally {
+      if (state.ocrScanToken === token) state.ocrScanToken = null;
+    }
+  });
+  state.ocrQueue = task;
+  return task;
 }
 
 async function runScan() {
   if (!state.imageCanvas || state.scanning) return;
   const token = ++state.scanToken;
+  const sourceCanvas = state.imageCanvas;
+  const detection = { ...state.detection };
   state.scanning = true;
   renderControls();
   setScanProgress("本地二维码扫描", 0.08);
@@ -837,29 +889,29 @@ async function runScan() {
   const warnings = [];
 
   try {
-    if (state.detection.qr) {
+    if (detection.qr) {
       try {
-        detected.push(...(await detectQrCode()));
+        detected.push(...(await detectQrCode(sourceCanvas)));
       } catch {
         warnings.push("二维码");
       }
     }
 
     if (token !== state.scanToken) return;
-    if (state.detection.faces) {
+    if (detection.faces) {
       setScanProgress("加载本地人脸模型", 0.2);
       try {
-        detected.push(...(await detectFaces()));
+        detected.push(...(await detectFaces(sourceCanvas)));
       } catch {
         warnings.push("人脸");
       }
     }
 
     if (token !== state.scanToken) return;
-    if (state.detection.phones || state.detection.ids || state.detection.plates) {
+    if (detection.phones || detection.emails || detection.ids || detection.plates) {
       setScanProgress("加载本地 OCR", 0.46);
       try {
-        detected.push(...(await detectOcrText()));
+        detected.push(...(await detectOcrText(sourceCanvas, detection, token)));
       } catch {
         warnings.push("OCR");
       }
@@ -889,8 +941,10 @@ async function runScan() {
       showToast("识别流程未完成，请重试或手动补框");
     }
   } finally {
-    state.scanning = false;
-    renderControls();
+    if (token === state.scanToken) {
+      state.scanning = false;
+      renderControls();
+    }
   }
 }
 
@@ -955,6 +1009,7 @@ function cancelManualSelection() {
 }
 
 function handleRegionListClick(event) {
+  if (state.scanning) return;
   const action = event.target.closest("[data-region-action]");
   const row = event.target.closest("[data-region-id]");
   if (!row) return;
@@ -1094,6 +1149,7 @@ function setupControls() {
   for (const [element, key] of [
     [elements.detectFaces, "faces"],
     [elements.detectPhones, "phones"],
+    [elements.detectEmails, "emails"],
     [elements.detectIds, "ids"],
     [elements.detectPlates, "plates"],
     [elements.detectQr, "qr"],
